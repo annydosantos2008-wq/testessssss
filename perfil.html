@@ -761,7 +761,7 @@
             barFill.style.width = `${pct}%`;
         }
 
-// --- LÓGICA DE RESGATE DE CÓDIGO PROMOCIONAL (CORRIGIDA DEFINITIVA) ---
+// --- LÓGICA DE RESGATE DE CÓDIGO PROMOCIONAL (VERSÃO BULLETPROOF) ---
 document.getElementById('btn-redeem-promo').addEventListener('click', async () => {
     const inputCodigo = document.getElementById('input-promo-code').value.trim().toUpperCase();
     
@@ -771,7 +771,7 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
     }
 
     if (!currentUserUid) {
-        Swal.fire({ icon: 'error', title: 'Aguarde', text: 'Sua sessão ainda está carregando. Tente novamente em um segundo.', background: '#0c0d12', color: '#fff' });
+        Swal.fire({ icon: 'error', title: 'Aguarde', text: 'Sua sessão ainda está carregando. Tente novamente.', background: '#0c0d12', color: '#fff' });
         return;
     }
 
@@ -793,16 +793,27 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
 
             const dadosPromo = promoSnap.data();
 
-            // AJUSTE CRUCIAL: Aceita 'STATUS' maiúsculo (como está no seu print) ou minúsculo
-            const statusCupom = (dadosPromo.STATUS || dadosPromo.status || "").toLowerCase();
+            // Função inteligente para descobrir o nome exato do campo no banco (Maiúsculo ou Minúsculo)
+            const mapearCampo = (obj, nomeChave) => {
+                return Object.keys(obj).find(k => k.toLowerCase() === nomeChave.toLowerCase()) || nomeChave;
+            };
+
+            const campoStatus = mapearCampo(dadosPromo, 'status');
+            const campoValor = mapearCampo(dadosPromo, 'valor');
+            const campoLimite = mapearCampo(dadosPromo, 'limiteUso');
+            const campoUsados = mapearCampo(dadosPromo, 'usadosCount');
+            const campoUsuarios = mapearCampo(dadosPromo, 'usuariosQueUsaram');
+
+            // Validação do Status do Cupom
+            const statusCupom = String(dadosPromo[campoStatus] || "").toLowerCase();
             if (statusCupom !== "ativo") {
                 throw "Este código promocional não está mais ativo.";
             }
 
-            // Tratamento das propriedades lidas do banco
-            const limiteUso = Number(dadosPromo.limiteUso !== undefined ? dadosPromo.limiteUso : (dadosPromo.LIMITEUSO !== undefined ? dadosPromo.LIMITEUSO : 9999));
-            const usadosCount = Number(dadosPromo.usadosCount || dadosPromo.USAODSCOUNT || 0);
-            const usuariosQueUsaram = dadosPromo.usuariosQueUsaram || dadosPromo.USUARIOSQUEUSARAM || [];
+            // Leitura segura dos contadores
+            const limiteUso = dadosPromo[campoLimite] !== undefined ? Number(dadosPromo[campoLimite]) : 9999;
+            const usadosCount = Number(dadosPromo[campoUsados] || 0);
+            const usuariosQueUsaram = Array.isArray(dadosPromo[campoUsuarios]) ? dadosPromo[campoUsuarios] : [];
 
             if (usuariosQueUsaram.includes(currentUserUid)) {
                 throw "Você já resgatou este código promocional!";
@@ -817,34 +828,18 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
                 throw "Perfil de usuário não localizado na base de dados.";
             }
 
-            // AJUSTE CRUCIAL: Busca o valor em 'VALOR' maiúsculo ou 'valor' minúsculo
-            let valorPremio = 0;
-            if (dadosPromo.VALOR !== undefined) {
-                valorPremio = Number(dadosPromo.VALOR);
-            } else if (dadosPromo.valor !== undefined) {
-                valorPremio = Number(dadosPromo.valor);
-            } else {
-                // Caso o cupom seja de valor aleatório
-                valorPremio = Number((Math.random() * 0.9 + 0.1).toFixed(2));
-            }
-
+            // Definição do valor ganho
+            let valorPremio = dadosPromo[campoValor] !== undefined ? Number(dadosPromo[campoValor]) : Number((Math.random() * 0.9 + 0.1).toFixed(2));
             const saldoAtualUser = Number(userSnap.data().saldoLucro || 0);
 
-            // Monta a nova lista incluindo o usuário atual
-            const novaListaUsuarios = [...usuariosQueUsaram, currentUserUid];
-
-            // Atualiza os dados respeitando a exata caixa de texto que está no banco
+            // Monta o objeto de atualização mantendo a formatação original do banco
             const updateDadosPromo = {};
-            if (dadosPromo.hasOwnProperty('STATUS')) {
-                updateDadosPromo.USAODSCOUNT = usadosCount + 1;
-                updateDadosPromo.USUARIOSQUEUSARAM = novaListaUsuarios;
-            } else {
-                updateDadosPromo.usadosCount = usadosCount + 1;
-                updateDadosPromo.usuariosQueUsaram = novaListaUsuarios;
-            }
+            updateDadosPromo[campoUsados] = usadosCount + 1;
+            updateDadosPromo[campoUsuarios] = [...usuariosQueUsaram, currentUserUid];
 
+            // Executa as atualizações na transação
             transaction.update(promoRef, updateDadosPromo);
-
+            
             transaction.update(userRef, {
                 saldoLucro: saldoAtualUser + valorPremio
             });
@@ -864,7 +859,7 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
         Swal.fire({
             icon: 'success',
             title: 'Código Resgatado!',
-            text: `Parabéns! Você ganhou R$ ${premioSorteado.toFixed(2)} adicionados instantaneamente ao seu saldo!`,
+            text: `Parabéns! Você ganhou R$ ${premioSorteado.toFixed(2)} adicionados ao seu saldo!`,
             background: '#0c0d12',
             color: '#fff',
             confirmButtonColor: '#10b981'
@@ -874,15 +869,14 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
         document.getElementById('input-promo-code').value = "";
 
     } catch (erroMensagem) {
-        console.error("Erro interno do resgate de código:", erroMensagem);
-        const textoTratado = typeof erroMensagem === 'string' ? erroMensagem : (erroMensagem.message || "Erro interno ao processar código.");
+        console.error("Erro no resgate:", erroMensagem);
+        const textoTratado = typeof erroMensagem === 'string' ? erroMensagem : "Erro ao processar código no banco de dados.";
         Swal.fire({ icon: 'error', title: 'Falha no Resgate', text: textoTratado, background: '#0c0d12', color: '#fff', confirmButtonColor: '#ff4d4d' });
     } finally {
         btnRedeem.disabled = false;
         btnRedeem.innerText = "Validar";
     }
 });
-
         // --- RENDERIZADOR DINÂMICO DO SISTEMA DE METAS & RANKING ---
         async function carregarDadosMetasERanking() {
             const containerMetas = document.getElementById('metas-list-container');
