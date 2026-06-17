@@ -761,7 +761,7 @@
             barFill.style.width = `${pct}%`;
         }
 
-        // --- LÓGICA DE RESGATE DE CÓDIGO PROMOCIONAL (CORRIGIDA E OTIMIZADA) ---
+// --- LÓGICA DE RESGATE DE CÓDIGO PROMOCIONAL (CORRIGIDA DEFINITIVA) ---
 document.getElementById('btn-redeem-promo').addEventListener('click', async () => {
     const inputCodigo = document.getElementById('input-promo-code').value.trim().toUpperCase();
     
@@ -793,17 +793,19 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
 
             const dadosPromo = promoSnap.data();
 
-            const statusCupom = dadosPromo.STATUS || dadosPromo.status;
+            // AJUSTE CRUCIAL: Aceita 'STATUS' maiúsculo (como está no seu print) ou minúsculo
+            const statusCupom = (dadosPromo.STATUS || dadosPromo.status || "").toLowerCase();
             if (statusCupom !== "ativo") {
                 throw "Este código promocional não está mais ativo.";
             }
 
-            const limiteUso = Number(dadosPromo.limiteUso !== undefined ? dadosPromo.limiteUso : 9999);
-            const usadosCount = Number(dadosPromo.usadosCount || 0);
-            const usuariosQueUsaram = dadosPromo.usuariosQueUsaram || [];
+            // Tratamento das propriedades lidas do banco
+            const limiteUso = Number(dadosPromo.limiteUso !== undefined ? dadosPromo.limiteUso : (dadosPromo.LIMITEUSO !== undefined ? dadosPromo.LIMITEUSO : 9999));
+            const usadosCount = Number(dadosPromo.usadosCount || dadosPromo.USAODSCOUNT || 0);
+            const usuariosQueUsaram = dadosPromo.usuariosQueUsaram || dadosPromo.USUARIOSQUEUSARAM || [];
 
             if (usuariosQueUsaram.includes(currentUserUid)) {
-                throw "Você já resgatou este código promocional hoje!";
+                throw "Você já resgatou este código promocional!";
             }
 
             if (usadosCount >= limiteUso) {
@@ -815,16 +817,33 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
                 throw "Perfil de usuário não localizado na base de dados.";
             }
 
-            const valorPremio = dadosPromo.valor !== undefined ? Number(dadosPromo.valor) : Number((Math.random() * 0.9 + 0.1).toFixed(2));
+            // AJUSTE CRUCIAL: Busca o valor em 'VALOR' maiúsculo ou 'valor' minúsculo
+            let valorPremio = 0;
+            if (dadosPromo.VALOR !== undefined) {
+                valorPremio = Number(dadosPromo.VALOR);
+            } else if (dadosPromo.valor !== undefined) {
+                valorPremio = Number(dadosPromo.valor);
+            } else {
+                // Caso o cupom seja de valor aleatório
+                valorPremio = Number((Math.random() * 0.9 + 0.1).toFixed(2));
+            }
+
             const saldoAtualUser = Number(userSnap.data().saldoLucro || 0);
 
-            // Criando a nova lista atualizada diretamente com o ID do usuário atual
+            // Monta a nova lista incluindo o usuário atual
             const novaListaUsuarios = [...usuariosQueUsaram, currentUserUid];
 
-            transaction.update(promoRef, {
-                usadosCount: usadosCount + 1,
-                usuariosQueUsaram: novaListaUsuarios
-            });
+            // Atualiza os dados respeitando a exata caixa de texto que está no banco
+            const updateDadosPromo = {};
+            if (dadosPromo.hasOwnProperty('STATUS')) {
+                updateDadosPromo.USAODSCOUNT = usadosCount + 1;
+                updateDadosPromo.USUARIOSQUEUSARAM = novaListaUsuarios;
+            } else {
+                updateDadosPromo.usadosCount = usadosCount + 1;
+                updateDadosPromo.usuariosQueUsaram = novaListaUsuarios;
+            }
+
+            transaction.update(promoRef, updateDadosPromo);
 
             transaction.update(userRef, {
                 saldoLucro: saldoAtualUser + valorPremio
