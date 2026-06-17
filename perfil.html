@@ -761,108 +761,108 @@
             barFill.style.width = `${pct}%`;
         }
 
-        // --- LÓGICA DE RESGATE DE CÓDIGO PROMOCIONAL (CORRIGIDA COM CAMPO 'STATUS' DO FIRESTORE) ---
-        document.getElementById('btn-redeem-promo').addEventListener('click', async () => {
-            const inputCodigo = document.getElementById('input-promo-code').value.trim().toUpperCase();
+        // --- LÓGICA DE RESGATE DE CÓDIGO PROMOCIONAL (CORRIGIDA E OTIMIZADA) ---
+document.getElementById('btn-redeem-promo').addEventListener('click', async () => {
+    const inputCodigo = document.getElementById('input-promo-code').value.trim().toUpperCase();
+    
+    if (!inputCodigo) {
+        Swal.fire({ icon: 'warning', title: 'Atenção', text: 'Por favor, digite um código promocional.', background: '#0c0d12', color: '#fff', confirmButtonColor: '#10b981' });
+        return;
+    }
+
+    if (!currentUserUid) {
+        Swal.fire({ icon: 'error', title: 'Aguarde', text: 'Sua sessão ainda está carregando. Tente novamente em um segundo.', background: '#0c0d12', color: '#fff' });
+        return;
+    }
+
+    const btnRedeem = document.getElementById('btn-redeem-promo');
+    btnRedeem.disabled = true;
+    btnRedeem.innerText = "...";
+
+    try {
+        const promoRef = doc(db, "codigos_promocionais", inputCodigo);
+        const userRef = doc(db, "usuarios", currentUserUid);
+        const movimentoRef = doc(collection(db, "usuarios", currentUserUid, "movimentacoes"));
+        
+        const premioSorteado = await runTransaction(db, async (transaction) => {
+            const promoSnap = await transaction.get(promoRef);
             
-            if (!inputCodigo) {
-                Swal.fire({ icon: 'warning', title: 'Atenção', text: 'Por favor, digite um código promocional.', background: '#0c0d12', color: '#fff', confirmButtonColor: '#10b981' });
-                return;
+            if (!promoSnap.exists()) {
+                throw "Código inválido ou expirado.";
             }
 
-            if (!currentUserUid) {
-                Swal.fire({ icon: 'error', title: 'Aguarde', text: 'Sua sessão ainda está carregando. Tente novamente em um segundo.', background: '#0c0d12', color: '#fff' });
-                return;
+            const dadosPromo = promoSnap.data();
+
+            const statusCupom = dadosPromo.STATUS || dadosPromo.status;
+            if (statusCupom !== "ativo") {
+                throw "Este código promocional não está mais ativo.";
             }
 
-            const btnRedeem = document.getElementById('btn-redeem-promo');
-            btnRedeem.disabled = true;
-            btnRedeem.innerText = "...";
+            const limiteUso = Number(dadosPromo.limiteUso !== undefined ? dadosPromo.limiteUso : 9999);
+            const usadosCount = Number(dadosPromo.usadosCount || 0);
+            const usuariosQueUsaram = dadosPromo.usuariosQueUsaram || [];
 
-            try {
-                const promoRef = doc(db, "codigos_promocionais", inputCodigo);
-                const userRef = doc(db, "usuarios", currentUserUid);
-                const movimentoRef = doc(collection(db, "usuarios", currentUserUid, "movimentacoes"));
-                
-                const premioSorteado = await runTransaction(db, async (transaction) => {
-                    const promoSnap = await transaction.get(promoRef);
-                    
-                    if (!promoSnap.exists()) {
-                        throw "Código inválido ou expirado.";
-                    }
-
-                    const dadosPromo = promoSnap.data();
-
-                    // AJUSTE CRÍTICO: Lendo 'STATUS' com letras maiúsculas exatamente como está no banco de dados!
-                    const statusCupom = dadosPromo.STATUS || dadosPromo.status;
-                    if (statusCupom !== "ativo") {
-                        throw "Este código promocional não está mais ativo.";
-                    }
-
-                    const limiteUso = Number(dadosPromo.limiteUso !== undefined ? dadosPromo.limiteUso : 9999);
-                    const usadosCount = Number(dadosPromo.usadosCount || 0);
-                    const usuariosQueUsaram = dadosPromo.usuariosQueUsaram || [];
-
-                    if (usuariosQueUsaram.includes(currentUserUid)) {
-                        throw "Você já resgatou este código promocional hoje!";
-                    }
-
-                    if (usadosCount >= limiteUso) {
-                        throw "Este código promocional esgotou o limite de usos!";
-                    }
-
-                    const userSnap = await transaction.get(userRef);
-                    if (!userSnap.exists()) {
-                        throw "Perfil de usuário não localizado na base de dados.";
-                    }
-
-                    // Se houver um valor definido, usa ele, senão faz o sorteio (0.10 a 1.00)
-                    const valorPremio = dadosPromo.valor !== undefined ? Number(dadosPromo.valor) : Number((Math.random() * 0.9 + 0.1).toFixed(2));
-                    const saldoAtualUser = Number(userSnap.data().saldoLucro || 0);
-
-                    transaction.update(promoRef, {
-                        usadosCount: usadosCount + 1,
-                        usuariosQueUsaram: arrayUnion(currentUserUid)
-                    });
-
-                    transaction.update(userRef, {
-                        saldoLucro: saldoAtualUser + valorPremio
-                    });
-
-                    transaction.set(movimentoRef, {
-                        tipo: "Bônus Promocional",
-                        valor: valorPremio,
-                        data: new Date().getTime(),
-                        descricao: `Código validado: ${inputCodigo}`
-                    });
-
-                    return valorPremio;
-                });
-
-                saldoGlobal += premioSorteado;
-
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Código Resgatado!',
-                   text: `Parabéns! Você ganhou R$ ${premioSorteado.toFixed(2)} adicionados instantaneamente ao seu saldo!`,
-                    background: '#0c0d12',
-                    color: '#fff',
-                    confirmButtonColor: '#10b981'
-                });
-
-                document.getElementById('stat-saldo').innerText = `R$ ${saldoGlobal.toFixed(2)}`;
-                document.getElementById('input-promo-code').value = "";
-
-            } catch (erroMensagem) {
-                console.error("Erro interno do resgate de código:", erroMensagem);
-                const textoTratado = typeof erroMensagem === 'string' ? erroMensagem : (erroMensagem.message || "Erro interno ao processar código.");
-                Swal.fire({ icon: 'error', title: 'Falha no Resgate', text: textoTratado, background: '#0c0d12', color: '#fff', confirmButtonColor: '#ff4d4d' });
-            } finally {
-                btnRedeem.disabled = false;
-                btnRedeem.innerText = "Validar";
+            if (usuariosQueUsaram.includes(currentUserUid)) {
+                throw "Você já resgatou este código promocional hoje!";
             }
+
+            if (usadosCount >= limiteUso) {
+                throw "Este código promocional esgotou o limite de usos!";
+            }
+
+            const userSnap = await transaction.get(userRef);
+            if (!userSnap.exists()) {
+                throw "Perfil de usuário não localizado na base de dados.";
+            }
+
+            const valorPremio = dadosPromo.valor !== undefined ? Number(dadosPromo.valor) : Number((Math.random() * 0.9 + 0.1).toFixed(2));
+            const saldoAtualUser = Number(userSnap.data().saldoLucro || 0);
+
+            // Criando a nova lista atualizada diretamente com o ID do usuário atual
+            const novaListaUsuarios = [...usuariosQueUsaram, currentUserUid];
+
+            transaction.update(promoRef, {
+                usadosCount: usadosCount + 1,
+                usuariosQueUsaram: novaListaUsuarios
+            });
+
+            transaction.update(userRef, {
+                saldoLucro: saldoAtualUser + valorPremio
+            });
+
+            transaction.set(movimentoRef, {
+                tipo: "Bônus Promocional",
+                valor: valorPremio,
+                data: new Date().getTime(),
+                descricao: `Código validado: ${inputCodigo}`
+            });
+
+            return valorPremio;
         });
 
+        saldoGlobal += premioSorteado;
+
+        Swal.fire({
+            icon: 'success',
+            title: 'Código Resgatado!',
+            text: `Parabéns! Você ganhou R$ ${premioSorteado.toFixed(2)} adicionados instantaneamente ao seu saldo!`,
+            background: '#0c0d12',
+            color: '#fff',
+            confirmButtonColor: '#10b981'
+        });
+
+        document.getElementById('stat-saldo').innerText = `R$ ${saldoGlobal.toFixed(2)}`;
+        document.getElementById('input-promo-code').value = "";
+
+    } catch (erroMensagem) {
+        console.error("Erro interno do resgate de código:", erroMensagem);
+        const textoTratado = typeof erroMensagem === 'string' ? erroMensagem : (erroMensagem.message || "Erro interno ao processar código.");
+        Swal.fire({ icon: 'error', title: 'Falha no Resgate', text: textoTratado, background: '#0c0d12', color: '#fff', confirmButtonColor: '#ff4d4d' });
+    } finally {
+        btnRedeem.disabled = false;
+        btnRedeem.innerText = "Validar";
+    }
+});
 
         // --- RENDERIZADOR DINÂMICO DO SISTEMA DE METAS & RANKING ---
         async function carregarDadosMetasERanking() {
