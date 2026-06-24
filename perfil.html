@@ -638,8 +638,9 @@
         let totalIndicadosGlobal = 0;
         let metasResgatadas = [];
 
+        // ALTERAÇÃO DO VALOR DA PATENTE BRONZE PARA 30.00
         const configuracaoMetas = [
-            { id: "bronze", nome: "Patente Bronze", convites: 5, premio: 50.00, cor: "var(--rank-bronze)", icone: "fa-medal" },
+            { id: "bronze", nome: "Patente Bronze", convites: 5, premio: 30.00, cor: "var(--rank-bronze)", icone: "fa-medal" },
             { id: "prata", nome: "Patente Prata", convites: 15, premio: 150.00, cor: "var(--rank-prata)", icone: "fa-award" },
             { id: "ouro", nome: "Patente Ouro", convites: 30, premio: 350.00, cor: "var(--rank-ouro)", icone: "fa-trophy" },
             { id: "platina", nome: "Patente Platina", convites: 50, premio: 600.00, cor: "var(--rank-platina)", icone: "fa-crown" },
@@ -1082,7 +1083,10 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
                         const d = snap.data();
                         
                         saldoGlobal = d.saldoLucro !== undefined ? Number(d.saldoLucro) : 0;
-                        totalIndicadosGlobal = d.indicadosCount || 0;
+                        
+                        // CORREÇÃO: Busca APENAS os convidados ativos do banco
+                        totalIndicadosGlobal = d.indicadosAtivosCount || 0; 
+                        
                         metasResgatadas = d.metasResgatadas || [];
 
                         document.getElementById('display-nome').innerText = d.nome || "Usuário";
