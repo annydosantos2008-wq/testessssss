@@ -130,7 +130,6 @@
             <span class="status-online"><i class="fas fa-circle" style="font-size: 0.65rem; margin-right: 5px;"></i> Sistema Online</span>
         </div>
 
-        <!-- MÓDULO OTIMIZADO: GERENCIADOR DE CÓDIGOS PROMOCIONAIS -->
         <div class="admin-section">
             <div class="section-title"><i class="fas fa-ticket-alt"></i> Gerenciador de Códigos Promocionais Diários</div>
             <div class="grid-inputs">
@@ -150,7 +149,6 @@
             <button class="btn-submit" id="btn-generate">Gerar e Ativar Código Diário ⚡</button>
         </div>
 
-        <!-- MURAL & BÔNUS DE CADASTRO -->
         <div style="display: grid; grid-template-columns: 1fr; gap: 20px;">
             <div class="admin-section">
                 <div class="section-title"><i class="fas fa-bullhorn"></i> Mural de Avisos Global</div>
@@ -169,7 +167,6 @@
             </div>
         </div>
 
-        <!-- DASHBOARD ESTATÍSTICAS -->
         <div class="stats-grid">
             <div class="stat-card">
                 <i class="fas fa-wallet"></i>
@@ -188,7 +185,6 @@
             </div>
         </div>
 
-        <!-- MODIFICAR USUÁRIOS -->
         <div class="admin-section">
             <div class="section-title"><i class="fas fa-user-cog"></i> Localizar e Modificar Usuário</div>
             <div style="display: flex; gap: 10px; margin-bottom: 5px;">
@@ -216,7 +212,6 @@
             </div>
         </div>
 
-        <!-- TABELA RECENTES -->
         <div class="admin-section">
             <div class="section-title"><i class="fas fa-history"></i> Clientes Recentes</div>
             <div class="table-wrapper">
@@ -227,7 +222,6 @@
             </div>
         </div>
 
-        <!-- SOLICITAÇÕES DE SAQUE -->
         <div class="admin-section">
             <div class="section-title"><i class="fas fa-hand-holding-usd"></i> Ordens de Saque Pendentes</div>
             <div class="table-wrapper">
@@ -296,27 +290,32 @@
             carregarBonusConfig();
         }
 
-        // LÓGICA DO MÓDULO DE CÓDIGOS PROMOCIONAIS (BLINDADA CONTRA ERROS NO CLIENTE)
+        // LÓGICA DO MÓDULO DE CÓDIGOS PROMOCIONAIS (BLINDADA E PADRONIZADA)
         document.getElementById('btn-generate').addEventListener('click', async () => {
-            const codigo = document.getElementById('admin-code-name').value.trim().toUpperCase();
+            const codigoInput = document.getElementById('admin-code-name').value.trim();
             const valorBonus = document.getElementById('admin-code-value').value.trim();
             const limite = document.getElementById('admin-code-limit').value.trim();
 
-            if (!codigo || !valorBonus || isNaN(valorBonus) || Number(valorBonus) < 0 || !limite || Number(limite) <= 0) {
+            if (!codigoInput || !valorBonus || isNaN(valorBonus) || Number(valorBonus) < 0 || !limite || Number(limite) <= 0) {
                 Swal.fire({ icon: 'error', title: 'Campos Inválidos', text: 'Preencha o nome, valor do bônus e o limite corretamente.', background: '#0c0d12', color: '#fff', confirmButtonColor: '#e5c158' });
                 return;
             }
 
+            const idCupom = codigoInput.toUpperCase();
+
             try {
-                // Mapeia todas as nomenclaturas comuns para garantir compatibilidade com seu script cliente
-                await setDoc(doc(db, "codigos_promocionais", codigo), {
-                    codigo: codigo,
-                    valor: Number(valorBonus),          // Padrão mais comum
-                    recompensa: Number(valorBonus),     // Fallback estrutural
-                    bonus: Number(valorBonus),          // Fallback estrutural 2
+                const btnGenerate = document.getElementById('btn-generate');
+                const textoOriginal = btnGenerate.innerHTML;
+                btnGenerate.disabled = true;
+                btnGenerate.innerText = "Processando...";
+
+                // Gravação com chaves exatas para evitar conflitos de case-sensitive
+                await setDoc(doc(db, "codigos_promocionais", idCupom), {
+                    codigo: idCupom,
+                    VALOR: Number(valorBonus),
+                    STATUS: "ativo",
                     limiteUso: Number(limite),
                     usadosCount: 0,
-                    status: "ativo",                    // Evita falhas de regras de "cupom inativo"
                     usuariosQueUsaram: [],
                     dataCriacao: new Date().getTime()
                 });
@@ -324,7 +323,7 @@
                 Swal.fire({
                     icon: 'success',
                     title: 'Código Ativado!',
-                    text: `O cupom "${codigo}" (R$ ${parseFloat(valorBonus).toFixed(2)}) está ativo para as primeiras ${limite} pessoas!`,
+                    text: `O cupom "${idCupom}" (R$ ${parseFloat(valorBonus).toFixed(2)}) foi salvo no banco e está pronto para uso!`,
                     background: '#0c0d12',
                     color: '#fff',
                     confirmButtonColor: '#e5c158'
@@ -333,10 +332,15 @@
                 document.getElementById('admin-code-name').value = "";
                 document.getElementById('admin-code-value').value = "";
                 document.getElementById('admin-code-limit').value = "";
+                
+                btnGenerate.disabled = false;
+                btnGenerate.innerHTML = textoOriginal;
 
             } catch (error) {
-                console.error(error);
-                Swal.fire({ icon: 'error', title: 'Erro de Conexão', text: 'Não foi possível cadastrar o código no Firebase.', background: '#0c0d12', color: '#fff', confirmButtonColor: '#e5c158' });
+                console.error("Erro ao criar cupom:", error);
+                Swal.fire({ icon: 'error', title: 'Erro de Gravação', text: 'Não foi possível cadastrar o código no Firebase.', background: '#0c0d12', color: '#fff', confirmButtonColor: '#e5c158' });
+                document.getElementById('btn-generate').disabled = false;
+                document.getElementById('btn-generate').innerHTML = "Gerar e Ativar Código Diário ⚡";
             }
         });
 
