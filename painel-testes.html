@@ -29,7 +29,7 @@
             backdrop-filter: blur(12px);
             box-shadow: 0 20px 40px rgba(0,0,0,0.4);
         }
-        h2 { text-align: center; margin-bottom: 25px; font-weight: 800; letter-spacing: -0.5px; }
+        h2 { text-align: center; margin-bottom: 25px; font-weight: 800; letter-spacing: -0.5px; color: #ffd700; }
         .form-group { margin-bottom: 18px; }
         label { display: block; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; margin-bottom: 6px; font-weight: 600; }
         select, input {
@@ -65,12 +65,12 @@
 <body>
 
     <div class="test-container">
-        <h2>Simulador de Fluxos</h2>
+        <h2>Simulador de Fluxos 🧪</h2>
         
         <div class="form-group">
             <label for="select-user">Selecionar Usuário Alvo</label>
             <select id="select-user">
-                <option value="">Carregando usuários ativos...</option>
+                <option value="">Carregando usuários...</option>
             </select>
         </div>
 
@@ -82,7 +82,7 @@
         <button class="btn-action" id="btn-trigger-flow">Executar Fluxo Completo</button>
         
         <div class="footer-note">
-            Este painel injeta depósitos e calcula comissões em cascata em tempo real (Nível 1, 2 e 3) com base nos parâmetros da rede.
+            Este painel injeta depósitos, adiciona giros na roleta e calcula comissões de rede (Níveis 1, 2 e 3).
         </div>
     </div>
 
@@ -102,28 +102,35 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // Carrega os usuários no Dropdown ao iniciar a página
+        // Carrega os usuários mapeando os dados corretamente
         async function carregarListaUsuarios() {
             const select = document.getElementById("select-user");
-            select.innerHTML = '<option value="">Selecione um usuário...</option>';
             
             try {
                 const querySnapshot = await getDocs(collection(db, "usuarios"));
+                select.innerHTML = '<option value="">Selecione um usuário...</option>';
+                
+                if (querySnapshot.empty) {
+                    select.innerHTML = '<option value="">Nenhum usuário encontrado</option>';
+                    return;
+                }
+
                 querySnapshot.forEach((docSnap) => {
                     const user = docSnap.data();
+                    const statusIcon = user.status === "ativo" ? "🟢" : "🔴";
                     const option = document.createElement("option");
                     option.value = docSnap.id;
-                    option.textContent = `${user.nome || 'Sem Nome'} (${user.email || 'Sem Email'})`;
+                    option.textContent = `${statusIcon} ${user.nome || 'Sem Nome'} (...${docSnap.id.substring(0,6)})`;
                     select.appendChild(option);
                 });
             } catch (error) {
-                console.error("Erro ao listar usuários:", error);
+                console.error("Erro detalhado do Firebase:", error);
                 select.innerHTML = '<option value="">Erro ao buscar banco de dados</option>';
             }
         }
         carregarListaUsuarios();
 
-        // Listener do botão principal
+        // Listener do botão de simulação de fluxos
         document.getElementById("btn-trigger-flow").addEventListener("click", async () => {
             const uid = document.getElementById("select-user").value;
             const valorDeposito = parseFloat(document.getElementById("input-deposit").value);
@@ -139,90 +146,84 @@
             });
 
             try {
-                // 1. Coleta dados do próprio usuário selecionado
                 const userRef = doc(db, "usuarios", uid);
                 const userSnap = await getDoc(userRef);
                 if (!userSnap.exists()) throw new Error("Usuário não localizado no sistema.");
 
                 const userData = userSnap.data();
-                const jaEraAtivo = userData.statusConta === "Ativa";
+                const jaEraAtivo = userData.status === "ativo";
 
-                // 2. Atualiza o saldo do usuário + Ativa a conta + ADICIONA 1 GIRO NA ROLETA
+                // 1. Atualiza saldos da conta e injeta +1 GIRO DE ROLETA no usuário ativo
                 await updateDoc(userRef, {
                     saldoLucro: increment(valorDeposito),
                     totalGanhos: increment(valorDeposito),
-                    statusConta: "Ativa",
-                    girosRoleta: increment(1) // Adiciona o giro ao depositar
+                    status: "ativo",
+                    girosRoleta: increment(1) 
                 });
 
-                // Cria o log de depósito direto do usuário
-                await addDoc(collection(db, "historico"), {
-                    userId: uid,
+                // Registra o log na subcoleção interna do usuário para testes locais
+                await addDoc(collection(db, "usuarios", uid, "movimentacoes"), {
+                    tipo: "Depósito Comercial (Simulado)",
                     valor: valorDeposito,
-                    tipo: "Depósito via PIX (Simulado)",
-                    data: Timestamp.now(),
-                    descricao: "Depósito inserido manualmente pelo ambiente de testes."
+                    data: new Date().getTime(),
+                    descricao: "Injeção de saldo com concessão de +1 giro da roleta."
                 });
 
-                // Configurações das porcentagens de comissão de indicação por níveis
+                // 2. Configurações exatas das suas comissões de rede (20%, 5% e 1%)
                 const configuracaoNiveis = [
-                    { nivel: 1, porcentagem: 0.10, label: "Nível 1 (Direto)" },
-                    { nivel: 2, porcentagem: 0.05, label: "Nível 2 (Indireto)" },
-                    { nivel: 3, porcentagem: 0.03, label: "Nível 3 (Indireto)" }
+                    { nivel: 1, porcentagem: 0.20, label: "Nível 1 (Direto)" },
+                    { nivel: 2, porcentagem: 0.05, label: "Nível 2" },
+                    { nivel: 3, porcentagem: 0.01, label: "Nível 3" }
                 ];
 
                 let resumoLogs = "";
                 let atualIndicadorUid = userData.indicadoPor || null;
 
-                // 3. Varre a árvore de indicações para cima de forma dinâmica até o Nível 3
+                // 3. Varre a árvore de uplinks (indicações para cima)
                 for (const config of configuracaoNiveis) {
-                    if (atualIndicadorUid) {
-                        const patrocinadorRef = doc(db, "usuarios", atualIndicadorUid);
-                        const patrocinadorSnap = await getDoc(patrocinadorRef);
+                    if (!atualIndicadorUid || atualIndicadorUid.trim() === "" || atualIndicadorUid === "null") break;
 
-                        if (!patrocinadorSnap.exists()) break;
+                    const patrocinadorRef = doc(db, "usuarios", atualIndicadorUid);
+                    const patrocinadorSnap = await getDoc(patrocinadorRef);
 
-                        const valorComissao = valorDeposito * config.porcentagem;
-                        const dadosPatrocinador = patrocinadorSnap.data();
+                    if (!patrocinadorSnap.exists()) break;
 
-                        // Objeto de update padrão para o patrocinador
-                        const updateData = {
-                            saldoLucro: increment(valorComissao),
-                            totalGanhos: increment(valorComissao)
-                        };
+                    const valorComissao = valorDeposito * config.porcentagem;
+                    const dadosPatrocinador = patrocinadorSnap.data();
 
-                        // Se for Nível 1 direto e o usuário convidado não era ativo antes, incrementa o contador
-                        if (!jaEraAtivo && config.nivel === 1) {
-                            updateData.convidadosAtivos = increment(1);
-                        }
+                    const updateData = {
+                        saldoLucro: increment(valorComissao),
+                        totalComissoes: increment(valorComissao)
+                    };
 
-                        await updateDoc(patrocinadorRef, updateData);
-
-                        // Registra a comissão no extrato/histórico do patrocinador
-                        await addDoc(collection(db, "historico"), {
-                            userId: atualIndicadorUid,
-                            valor: valorComissao,
-                            tipo: `Bônus de Indicação - ${config.label}`,
-                            data: Timestamp.now(),
-                            descricao: `Recebido do convidado: ${userData.nome || "Usuário de Teste"}`
-                        });
-
-                        resumoLogs += `<br><b>${config.label}:</b> UID (...${atualIndicadorUid.substring(0,6)}) ganhou R$ ${valorComissao.toFixed(2)}`;
-                        if (!jaEraAtivo && config.nivel === 1) {
-                            resumoLogs += ` ➔ <i>Contador de Convidados Ativos aumentado!</i>`;
-                        }
-
-                        // Sobe para o próximo pai cadastrado na árvore (Uplink)
-                        atualIndicadorUid = dadosPatrocinador.indicadoPor || null;
-                    } else {
-                        break;
+                    // Se o convidado direto (Nível 1) acabou de se ativar, incrementa o contador oficial
+                    if (!jaEraAtivo && config.nivel === 1) {
+                        updateData.indicadosAtivosCount = increment(1);
                     }
+
+                    await updateDoc(patrocinadorRef, updateData);
+
+                    // Cria registro de movimentação para o extrato do padrinho
+                    await addDoc(collection(db, "usuarios", atualIndicadorUid, "movimentacoes"), {
+                        tipo: `Comissão ${config.label}`,
+                        valor: valorComissao,
+                        data: new Date().getTime(),
+                        descricao: `Recebido do convidado ativo: ${userData.nome || "Usuário de Teste"}`
+                    });
+
+                    resumoLogs += `<br><b>${config.label}:</b> UID (...${atualIndicadorUid.substring(0,6)}) ganhou R$ ${valorComissao.toFixed(2)}`;
+                    if (!jaEraAtivo && config.nivel === 1) {
+                        resumoLogs += ` ➔ <i>Contador de Convidados Ativos aumentado!</i>`;
+                    }
+
+                    // Sobe para o pai do pai
+                    atualIndicadorUid = dadosPatrocinador.indicadoPor || null;
                 }
 
                 Swal.fire({
                     icon: 'success',
                     title: 'Fluxo Concluído!',
-                    html: `Conta do usuário foi atualizada para Ativa.<br>Depósito de R$ ${valorDeposito.toFixed(2)} injetado.<br><b style="color: #00e676">+1 Giro adicionado à roleta com sucesso!</b><br>${resumoLogs === "" ? "<br><i>Este usuário não foi indicado por ninguém (sem pai na rede).</i>" : "<br>" + resumoLogs}`,
+                    html: `Conta do usuário atualizada para Ativa.<br>Depósito de R$ ${valorDeposito.toFixed(2)} injetado.<br><b style="color: #00e676">+1 Giro adicionado à roleta!</b><br>${resumoLogs === "" ? "<br><i>Este usuário não foi indicado por ninguém (sem árvore de rede).</i>" : "<br>" + resumoLogs}`,
                     background: '#060b19',
                     color: '#fff',
                     confirmButtonColor: '#0052ff'
