@@ -60,7 +60,6 @@
         }
         .header a:hover { opacity: 1; transform: translateX(-5px); }
 
-        /* CARD GLASSMORPHISM NOVO DESIGN */
         .invite-card {
             background: var(--card-glass);
             backdrop-filter: blur(16px);
@@ -87,7 +86,6 @@
             z-index: -1;
         }
 
-        /* BADGES DE LIDERANÇA ATUALIZADOS */
         .level-badge {
             display: inline-block; 
             padding: 6px 16px; 
@@ -115,7 +113,6 @@
             -webkit-text-fill-color: transparent;
         }
 
-        /* BARRA DE PROGRESSO EM OURO */
         .progress-container { 
             background: rgba(255,255,255,0.05); 
             border-radius: 50px; 
@@ -142,7 +139,6 @@
             justify-content: space-between;
         }
 
-        /* CAIXAS DE CONVITE E LINK */
         .copy-section-title {
             text-align: left; 
             font-size: 0.75rem; 
@@ -206,7 +202,6 @@
         }
         .btn-copy:active { transform: scale(0.95); }
 
-        /* METRIC GRID */
         .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 25px; margin-bottom: 22px; }
         .stat-item { 
             background: linear-gradient(145deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01)); 
@@ -233,7 +228,6 @@
         .stat-item #bonus-ganho { color: var(--green-success); text-shadow: 0 0 15px rgba(0, 230, 118, 0.2); }
         .stat-item #total-rede-ativos { color: var(--gold); }
 
-        /* LINHAS DE GERAÇÃO ESTILO FINTECH LUXO */
         .levels-table {
             background: rgba(0,0,0,0.25);
             border-radius: 18px;
@@ -292,7 +286,6 @@
         }
         .info-step b { color: white; font-weight: 600; }
 
-        /* MENU INFERIOR ALINHADO 100% COM O APP */
         .nav-bottom { 
             position: fixed; 
             bottom: 0; 
@@ -353,7 +346,6 @@
             <span id="progress-percent" style="color: var(--gold); font-weight: 700;">0%</span>
         </div>
 
-        <!-- SESSÃO DE CONVITE SEPARADA: CÓDIGO E LINK -->
         <div class="copy-section-title"><i class="fas fa-key"></i> Seu Código de Convite</div>
         <div class="link-box">
             <span id="referral-code">Gerando código...</span>
@@ -365,7 +357,6 @@
             <span id="referral-link">Gerando link exclusivo...</span>
             <button class="btn-copy" id="btn-link" onclick="window.copyLink()" title="Copiar Link"><i class="far fa-copy"></i></button>
         </div>
-        <!-- FIM SESSÃO DE CONVITE -->
 
         <div class="stats-grid">
             <div class="stat-item">
@@ -425,7 +416,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, onSnapshot, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDKDFw7khZzM9hIX7xbbrbFQeESiCLnmOw",
@@ -451,40 +442,67 @@
                 const linkElement = document.getElementById('referral-link');
                 const codeElement = document.getElementById('referral-code');
                 
-                // Preenche o Link e o Código na tela
                 linkElement.innerText = `${baseUrl}/registro.html?ref=${user.uid}`;
                 codeElement.innerText = user.uid;
                 
                 linkElement.classList.add('animate__animated', 'animate__fadeIn');
                 codeElement.classList.add('animate__animated', 'animate__fadeIn');
                 
+                // Mapeamento dinâmico direto da Coleção de Usuários
+                try {
+                    const usuariosRef = collection(db, "usuarios");
+                    
+                    // Busca todos os usuários cadastrados do sistema de uma vez só
+                    const querySnapshot = await getDocs(usuariosRef);
+                    
+                    let l1 = 0, l1Ativos = 0;
+                    let l2 = 0, l2Ativos = 0;
+                    let l3 = 0, l3Ativos = 0;
+
+                    querySnapshot.forEach((docSnap) => {
+                        const uData = docSnap.data();
+                        
+                        // Verifica 1ª Geração
+                        if (uData.indicadoPor === user.uid) {
+                            l1++;
+                            if (uData.status === "ativo") l1Ativos++;
+                        }
+                        // Verifica 2ª Geração
+                        if (uData.indicadoPorAvo === user.uid) {
+                            l2++;
+                            if (uData.status === "ativo") l2Ativos++;
+                        }
+                        // Verifica 3ª Geração
+                        if (uData.indicadoPorBisavo === user.uid) {
+                            l3++;
+                            if (uData.status === "ativo") l3Ativos++;
+                        }
+                    });
+
+                    // Mostra os contadores corretos calculados dinamicamente
+                    document.getElementById('count-l1').innerText = `${l1} / ${l1Ativos}`;
+                    document.getElementById('count-l2').innerText = `${l2} / ${l2Ativos}`;
+                    document.getElementById('count-l3').innerText = `${l3} / ${l3Ativos}`;
+                    
+                    const totalEquipe = l1 + l2 + l3;
+                    const totalAtivos = l1Ativos + l2Ativos + l3Ativos;
+
+                    document.getElementById('total-rede').innerText = totalEquipe;
+                    document.getElementById('total-rede-ativos').innerText = totalAtivos;
+                    document.getElementById('total-diretos').innerText = l1;
+
+                    atualizarMetasEquipe(totalEquipe);
+
+                } catch (error) {
+                    console.error("Erro ao computar gerações de ativos:", error);
+                }
+
+                // Mantém o listener do perfil do usuário para atualizar os ganhos totais de comissão
                 onSnapshot(doc(db, "usuarios", user.uid), (snap) => {
                     if(snap.exists()){
                         const data = snap.data();
-                        
-                        const l1 = data.indicadosCount || 0;
-                        const l2 = data.indicadosL2Count || 0;
-                        const l3 = data.indicadosL3Count || 0;
-
-                        const l1Ativos = data.indicadosAtivosCount || 0;
-                        const l2Ativos = data.indicadosL2AtivosCount || 0;
-                        const l3Ativos = data.indicadosL3AtivosCount || 0;
-
                         const totalComissoes = data.totalComissoes || 0;
-                        
-                        const totalEquipe = l1 + l2 + l3;
-                        const totalAtivos = l1Ativos + l2Ativos + l3Ativos;
-                        
-                        document.getElementById('count-l1').innerText = `${l1} / ${l1Ativos}`;
-                        document.getElementById('count-l2').innerText = `${l2} / ${l2Ativos}`;
-                        document.getElementById('count-l3').innerText = `${l3} / ${l3Ativos}`;
-                        
-                        document.getElementById('total-rede').innerText = totalEquipe;
-                        document.getElementById('total-rede-ativos').innerText = totalAtivos;
-                        document.getElementById('total-diretos').innerText = l1;
                         document.getElementById('bonus-ganho').innerText = formatadorMoeda.format(totalComissoes);
-                        
-                        atualizarMetasEquipe(totalEquipe);
                     }
                 });
             } else {
@@ -527,7 +545,6 @@
             percentLabel.innerText = finalPercent + "%";
         }
 
-        // Funções Dinâmicas de Cópia
         window.copyCode = function() {
             const code = document.getElementById('referral-code').innerText;
             if(code.includes("Gerando")) return;
@@ -540,7 +557,7 @@
             executarCopia(link, 'btn-link', 'Link Copiado!');
         }
 
-        function executarCopia(texto, btnId, msgSucesso) {
+        function ejecutarCopia(texto, btnId, msgSucesso) {
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(texto).then(() => {
                     sucessoCopiaVisual(btnId, msgSucesso);
