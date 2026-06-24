@@ -633,7 +633,11 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        let saldoGlobal = 0;
+        // VARIÁVEIS SEGURAS DE MAPA DE DADOS
+        let saldoPrincipal = 0;
+        let saldoLucro = 0;
+        let saldoGlobal = 0; 
+        
         let currentUserUid = null;
         let totalIndicadosGlobal = 0;
         let metasResgatadas = [];
@@ -762,7 +766,7 @@
             barFill.style.width = `${pct}%`;
         }
 
-// --- LÓGICA DE RESGATE DE CÓDIGO PROMOCIONAL (VERSÃO BULLETPROOF) ---
+// --- LÓGICA DE RESGATE DE CÓDIGO PROMOCIONAL ---
 document.getElementById('btn-redeem-promo').addEventListener('click', async () => {
     const inputCodigo = document.getElementById('input-promo-code').value.trim().toUpperCase();
     
@@ -794,7 +798,6 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
 
             const dadosPromo = promoSnap.data();
 
-            // Função inteligente para descobrir o nome exato do campo no banco (Maiúsculo ou Minúsculo)
             const mapearCampo = (obj, nomeChave) => {
                 return Object.keys(obj).find(k => k.toLowerCase() === nomeChave.toLowerCase()) || nomeChave;
             };
@@ -805,13 +808,11 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
             const campoUsados = mapearCampo(dadosPromo, 'usadosCount');
             const campoUsuarios = mapearCampo(dadosPromo, 'usuariosQueUsaram');
 
-            // Validação do Status do Cupom
             const statusCupom = String(dadosPromo[campoStatus] || "").toLowerCase();
             if (statusCupom !== "ativo") {
                 throw "Este código promocional não está mais ativo.";
             }
 
-            // Leitura segura dos contadores
             const limiteUso = dadosPromo[campoLimite] !== undefined ? Number(dadosPromo[campoLimite]) : 9999;
             const usadosCount = Number(dadosPromo[campoUsados] || 0);
             const usuariosQueUsaram = Array.isArray(dadosPromo[campoUsuarios]) ? dadosPromo[campoUsuarios] : [];
@@ -829,20 +830,17 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
                 throw "Perfil de usuário não localizado na base de dados.";
             }
 
-            // Definição do valor ganho
             let valorPremio = dadosPromo[campoValor] !== undefined ? Number(dadosPromo[campoValor]) : Number((Math.random() * 0.9 + 0.1).toFixed(2));
-            const saldoAtualUser = Number(userSnap.data().saldoLucro || 0);
+            const saldoAtualLucroUser = Number(userSnap.data().saldoLucro || 0);
 
-            // Monta o objeto de atualização mantendo a formatação original do banco
             const updateDadosPromo = {};
             updateDadosPromo[campoUsados] = usadosCount + 1;
             updateDadosPromo[campoUsuarios] = [...usuariosQueUsaram, currentUserUid];
 
-            // Executa as atualizações na transação
             transaction.update(promoRef, updateDadosPromo);
             
             transaction.update(userRef, {
-                saldoLucro: saldoAtualUser + valorPremio
+                saldoLucro: saldoAtualLucroUser + valorPremio
             });
 
             transaction.set(movimentoRef, {
@@ -855,7 +853,9 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
             return valorPremio;
         });
 
-        saldoGlobal += premioSorteado;
+        // Atualizando as variáveis locais para refletir na tela imediatamente
+        saldoLucro += premioSorteado;
+        saldoGlobal = saldoPrincipal + saldoLucro;
 
         Swal.fire({
             icon: 'success',
@@ -957,10 +957,12 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
         async function processarResgatePremioMeta(idMeta, valorPremio) {
             try {
                 const userRef = doc(db, "usuarios", currentUserUid);
-                const novoSaldo = saldoGlobal + valorPremio;
+                
+                // Salva o lucro separado no banco, garantindo que "saldo" e "saldoLucro" andem sem se sobrescrever
+                const novoSaldoLucro = saldoLucro + valorPremio;
 
                 await updateDoc(userRef, {
-                    saldoLucro: novoSaldo,
+                    saldoLucro: novoSaldoLucro,
                     metasResgatadas: arrayUnion(idMeta)
                 });
 
@@ -973,8 +975,11 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
                     confirmButtonColor: '#e5c158'
                 });
 
-                saldoGlobal = novoSaldo;
+                // Atualizando as variáveis locais para refletir na tela imediatamente
+                saldoLucro = novoSaldoLucro;
+                saldoGlobal = saldoPrincipal + saldoLucro;
                 metasResgatadas.push(idMeta);
+                
                 document.getElementById('stat-saldo').innerText = `R$ ${saldoGlobal.toFixed(2)}`;
                 carregarDadosMetasERanking();
 
@@ -1056,8 +1061,21 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
                         dataFim: new Date().getTime() + seteDiasEmMs
                     };
 
+                    // Lógica para deduzir o valor trancado de forma segura sem negativar "saldo" ou "saldoLucro"
+                    let deduzirSaldoPrincipal = saldoPrincipal;
+                    let deduzirSaldoLucro = saldoLucro;
+                    
+                    if (valorNum <= deduzirSaldoPrincipal) {
+                        deduzirSaldoPrincipal -= valorNum;
+                    } else {
+                        const restante = valorNum - deduzirSaldoPrincipal;
+                        deduzirSaldoPrincipal = 0;
+                        deduzirSaldoLucro -= restante;
+                    }
+
                     await updateDoc(userRef, {
-                        saldoLucro: saldoGlobal - valorNum, 
+                        saldo: deduzirSaldoPrincipal,
+                        saldoLucro: deduzirSaldoLucro, 
                         cofreNexus: objetoCofre
                     });
 
@@ -1082,10 +1100,13 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
                     if(snap.exists()){
                         const d = snap.data();
                         
-                        saldoGlobal = d.saldoLucro !== undefined ? Number(d.saldoLucro) : 0;
+                        // CORREÇÃO: Lê ambos os saldos do Firebase para mostrar o poder real do usuário
+                        saldoPrincipal = d.saldo !== undefined ? Number(d.saldo) : 0;
+                        saldoLucro = d.saldoLucro !== undefined ? Number(d.saldoLucro) : 0;
+                        saldoGlobal = saldoPrincipal + saldoLucro;
                         
-                        // CORREÇÃO: Busca APENAS os convidados ativos do banco
-                        totalIndicadosGlobal = d.indicadosAtivosCount || 0; 
+                        // CORREÇÃO: Lê o campo que existe no seu banco de dados ("indicadosCount")
+                        totalIndicadosGlobal = d.indicadosAtivosCount !== undefined ? d.indicadosAtivosCount : (d.indicadosCount || 0); 
                         
                         metasResgatadas = d.metasResgatadas || [];
 
