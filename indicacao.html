@@ -349,13 +349,13 @@
         <div class="copy-section-title"><i class="fas fa-key"></i> Seu Código de Convite</div>
         <div class="link-box">
             <span id="referral-code">Gerando código...</span>
-            <button class="btn-copy" id="btn-code" onclick="copyCode()" title="Copiar Código"><i class="far fa-copy"></i></button>
+            <button class="btn-copy" id="btn-code" title="Copiar Código"><i class="far fa-copy"></i></button>
         </div>
 
         <div class="copy-section-title"><i class="fas fa-link"></i> Link Automático de Cadastro</div>
         <div class="link-box">
             <span id="referral-link">Gerando link exclusivo...</span>
-            <button class="btn-copy" id="btn-link" onclick="copyLink()" title="Copiar Link"><i class="far fa-copy"></i></button>
+            <button class="btn-copy" id="btn-link" title="Copiar Link"><i class="far fa-copy"></i></button>
         </div>
 
         <div class="stats-grid">
@@ -416,7 +416,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, collection, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, onSnapshot, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDKDFw7khZzM9hIX7xbbrbFQeESiCLnmOw",
@@ -436,28 +436,6 @@
             currency: 'BRL'
         });
 
-        // Estrutura global para guardar as contagens em tempo real
-        let dadosRede = {
-            l1: 0, l1Ativos: 0,
-            l2: 0, l2Ativos: 0,
-            l3: 0, l3Ativos: 0
-        };
-
-        function renderizarRede() {
-            document.getElementById('count-l1').innerText = `${dadosRede.l1} / ${dadosRede.l1Ativos}`;
-            document.getElementById('count-l2').innerText = `${dadosRede.l2} / ${dadosRede.l2Ativos}`;
-            document.getElementById('count-l3').innerText = `${dadosRede.l3} / ${dadosRede.l3Ativos}`;
-            
-            const totalEquipe = dadosRede.l1 + dadosRede.l2 + dadosRede.l3;
-            const totalAtivos = dadosRede.l1Ativos + dadosRede.l2Ativos + dadosRede.l3Ativos;
-
-            document.getElementById('total-rede').innerText = totalEquipe;
-            document.getElementById('total-rede-ativos').innerText = totalAtivos;
-            document.getElementById('total-diretos').innerText = dadosRede.l1;
-
-            atualizarMetasEquipe(totalEquipe);
-        }
-
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 const baseUrl = window.location.origin;
@@ -470,33 +448,52 @@
                 linkElement.classList.add('animate__animated', 'animate__fadeIn');
                 codeElement.classList.add('animate__animated', 'animate__fadeIn');
                 
-                const usuariosRef = collection(db, "usuarios");
+                try {
+                    const usuariosRef = collection(db, "usuarios");
+                    const querySnapshot = await getDocs(usuariosRef);
+                    
+                    let l1 = 0, l1Ativos = 0;
+                    let l2 = 0, l2Ativos = 0;
+                    let l3 = 0, l3Ativos = 0;
 
-                // Ouvir Geração 1 em tempo real
-                const qL1 = query(usuariosRef, where("indicadoPor", "==", user.uid));
-                onSnapshot(qL1, (snapshot) => {
-                    dadosRede.l1 = snapshot.size;
-                    dadosRede.l1Ativos = snapshot.docs.filter(d => d.data().status === "ativo").length;
-                    renderizarRede();
-                });
+                    querySnapshot.forEach((docSnap) => {
+                        const uData = docSnap.data();
+                        
+                        // REGRA ATUALIZADA: Só é ativo se o totalDepositado existir e for maior que 0
+                        // Isso ignora contas novas que têm apenas o bónus inicial de 10$
+                        const usuarioDeFatoAtivo = uData.totalDepositado && uData.totalDepositado > 0;
+                        
+                        if (uData.indicadoPor === user.uid) {
+                            l1++;
+                            if (usuarioDeFatoAtivo) l1Ativos++;
+                        }
+                        if (uData.indicadoPorAvo === user.uid) {
+                            l2++;
+                            if (usuarioDeFatoAtivo) l2Ativos++;
+                        }
+                        if (uData.indicadoPorBisavo === user.uid) {
+                            l3++;
+                            if (usuarioDeFatoAtivo) l3Ativos++;
+                        }
+                    });
 
-                // Ouvir Geração 2 em tempo real
-                const qL2 = query(usuariosRef, where("indicadoPorAvo", "==", user.uid));
-                onSnapshot(qL2, (snapshot) => {
-                    dadosRede.l2 = snapshot.size;
-                    dadosRede.l2Ativos = snapshot.docs.filter(d => d.data().status === "ativo").length;
-                    renderizarRede();
-                });
+                    document.getElementById('count-l1').innerText = `${l1} / ${l1Ativos}`;
+                    document.getElementById('count-l2').innerText = `${l2} / ${l2Ativos}`;
+                    document.getElementById('count-l3').innerText = `${l3} / ${l3Ativos}`;
+                    
+                    const totalEquipe = l1 + l2 + l3;
+                    const totalAtivos = l1Ativos + l2Ativos + l3Ativos;
 
-                // Ouvir Geração 3 em tempo real
-                const qL3 = query(usuariosRef, where("indicadoPorBisavo", "==", user.uid));
-                onSnapshot(qL3, (snapshot) => {
-                    dadosRede.l3 = snapshot.size;
-                    dadosRede.l3Ativos = snapshot.docs.filter(d => d.data().status === "ativo").length;
-                    renderizarRede();
-                });
+                    document.getElementById('total-rede').innerText = totalEquipe;
+                    document.getElementById('total-rede-ativos').innerText = totalAtivos;
+                    document.getElementById('total-diretos').innerText = l1;
 
-                // Ouvir dados do perfil para saldo de comissões
+                    atualizarMetasEquipe(totalEquipe);
+
+                } catch (error) {
+                    console.error("Erro ao computar gerações de ativos:", error);
+                }
+
                 onSnapshot(doc(db, "usuarios", user.uid), (snap) => {
                     if(snap.exists()){
                         const data = snap.data();
@@ -543,21 +540,19 @@
             bar.style.width = finalPercent + "%";
             percentLabel.innerText = finalPercent + "%";
         }
-    </script>
 
-    <script>
-        // Funções de cópia movidas para fora do script de módulo garantindo escopo global dos botões onclick
-        function copyCode() {
+        // Configuração dos botões de copiar direta via addEventListener
+        document.getElementById('btn-code').addEventListener('click', () => {
             const code = document.getElementById('referral-code').innerText;
             if(code.includes("Gerando")) return;
             executarCopia(code, 'btn-code', 'Código Copiado!');
-        }
+        });
 
-        function copyLink() {
+        document.getElementById('btn-link').addEventListener('click', () => {
             const link = document.getElementById('referral-link').innerText;
             if(link.includes("Gerando")) return;
             executarCopia(link, 'btn-link', 'Link Copiado!');
-        }
+        });
 
         function executarCopia(texto, btnId, msgSucesso) {
             if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -590,12 +585,12 @@
             const iconOriginal = btn.innerHTML;
             
             btn.innerHTML = '<i class="fas fa-check"></i>';
-            btn.style.background = '#00e676';
+            btn.style.background = 'var(--green-success)';
             btn.style.color = '#fff';
             
             setTimeout(() => {
                 btn.innerHTML = iconOriginal;
-                btn.style.background = 'linear-gradient(135deg, #ffd700 0%, #eab308 100%)';
+                btn.style.background = 'var(--gold-gradient)';
                 btn.style.color = '#020408';
             }, 2000);
 
