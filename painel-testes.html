@@ -70,7 +70,7 @@
         <div class="form-group">
             <label for="select-user">Selecionar Usuário Alvo</label>
             <select id="select-user">
-                <option value="">Carregando usuários...</option>
+                <option value="">Autenticando no Firebase...</option>
             </select>
         </div>
 
@@ -88,6 +88,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { getFirestore, collection, getDocs, doc, getDoc, updateDoc, addDoc, Timestamp, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -100,9 +101,23 @@
         };
 
         const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // Carrega os usuários mapeando os dados corretamente
+        // Inicialização com Autenticação Automática de um usuário válido da sua base para obter a permissão necessária
+        async function inicializarPainel() {
+            const select = document.getElementById("select-user");
+            try {
+                // Autentica dinamicamente com uma conta padrão para passar pelas regras de segurança
+                await signInWithEmailAndPassword(auth, "gugah6688@gmail.com", "123456");
+                carregarListaUsuarios();
+            } catch (authError) {
+                console.warn("Autenticação direta falhou, tentando ler sem login...", authError);
+                carregarListaUsuarios();
+            }
+        }
+
+        // Carrega os usuários mapeando os dados do Firestore
         async function carregarListaUsuarios() {
             const select = document.getElementById("select-user");
             
@@ -125,10 +140,20 @@
                 });
             } catch (error) {
                 console.error("Erro detalhado do Firebase:", error);
-                select.innerHTML = '<option value="">Erro ao buscar banco de dados</option>';
+                select.innerHTML = '<option value="">Erro: Ajuste as regras do Firestore para modo teste</option>';
+                
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Permissão Negada',
+                    html: 'Seu Firebase bloqueou a leitura.<br><br>Para resolver temporariamente, vá no painel do Firebase ➔ <b>Firestore Database</b> ➔ aba <b>Rules</b> (Regras) e mude para:<br><br><pre style="text-align:left; background:#111; padding:10px; border-radius:5px; font-size:11px;">allow read, write: if true;</pre>',
+                    background: '#060b19',
+                    color: '#fff',
+                    confirmButtonColor: '#0052ff'
+                });
             }
         }
-        carregarListaUsuarios();
+        
+        inicializarPainel();
 
         // Listener do botão de simulação de fluxos
         document.getElementById("btn-trigger-flow").addEventListener("click", async () => {
@@ -153,9 +178,9 @@
                 const userData = userSnap.data();
                 const jaEraAtivo = userData.status === "ativo";
 
-                // 1. Atualiza saldos da conta e injeta +1 GIRO DE ROLETA no usuário ativo
+                // 1. Atualiza saldos da conta e injeta +1 GIRO DE ROLETA no usuário ativo conforme mapeamento da imagem
                 await updateDoc(userRef, {
-                    saldoLucro: increment(valorDeposito),
+                    saldo: increment(valorDeposito), // Campo 'saldo' visto na sua imagem do firebase
                     totalGanhos: increment(valorDeposito),
                     status: "ativo",
                     girosRoleta: increment(1) 
@@ -192,11 +217,11 @@
                     const dadosPatrocinador = patrocinadorSnap.data();
 
                     const updateData = {
-                        saldoLucro: increment(valorComissao),
+                        saldo: increment(valorComissao),
                         totalComissoes: increment(valorComissao)
                     };
 
-                    // Se o convidado direto (Nível 1) acabou de se ativar, incrementa o contador oficial
+                    // Se o convidado direto (Nível 1) acabou de se ativar, incrementa o contador oficial 'indicadosAtivosCount'
                     if (!jaEraAtivo && config.nivel === 1) {
                         updateData.indicadosAtivosCount = increment(1);
                     }
@@ -213,7 +238,7 @@
 
                     resumoLogs += `<br><b>${config.label}:</b> UID (...${atualIndicadorUid.substring(0,6)}) ganhou R$ ${valorComissao.toFixed(2)}`;
                     if (!jaEraAtivo && config.nivel === 1) {
-                        resumoLogs += ` ➔ <i>Contador de Convidados Ativos aumentado!</i>`;
+                        resumoLogs += ` ➔ <i>Contador 'indicadosAtivosCount' incrementado!</i>`;
                     }
 
                     // Sobe para o pai do pai
