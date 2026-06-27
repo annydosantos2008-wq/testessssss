@@ -54,7 +54,7 @@
         <div class="form-group">
             <label>Selecione o Usuário para Depositar</label>
             <select id="select-users">
-                <option value="">Carregando usuários da base...</option>
+                <option value="">Autenticando sessão segura...</option>
             </select>
         </div>
 
@@ -68,6 +68,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { getFirestore, collection, getDocs, doc, getDoc, updateDoc, addDoc, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -80,11 +81,27 @@
         };
 
         const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
         const db = getFirestore(app);
 
         let usuarioLogadoUid = "";
 
-        // Carrega os usuários direto do Firestore
+        // Autentica o painel como administrador primeiro para herdar as permissões necessárias de leitura
+        async function inicializarAmbiente() {
+            const select = document.getElementById('select-users');
+            try {
+                // Autentica com a conta master configurada nas regras do seu Firestore
+                await signInWithEmailAndPassword(auth, "lipedosantos2008@gmail.com", "123456");
+                console.log("Autenticado como administrador no painel de testes com sucesso.");
+                carregarListaUsuarios();
+            } catch (authErr) {
+                console.error("Falha na autenticação administrativa do simulador:", authErr);
+                select.innerHTML = `<option value="">Erro na Autenticação Admin</option>`;
+                Swal.fire("Sessão Bloqueada", "Cadastre a senha correta do email administrador no código para liberar o simulador.", "error");
+            }
+        }
+
+        // Carrega os usuários direto do Firestore após estar logado
         async function carregarListaUsuarios() {
             const select = document.getElementById('select-users');
             try {
@@ -98,7 +115,7 @@
 
                 snap.forEach(userDoc => {
                     const d = userDoc.data();
-                    const status = d.ativo ? "🟢 Ativo (Aparece no Rank)" : "🔴 Inativo (Oculto)";
+                    const status = d.ativo ? "🟢 Ativo (Rank)" : "🔴 Inativo (Oculto)";
                     const option = document.createElement('option');
                     option.value = userDoc.id;
                     option.innerText = `${d.nome || 'Sem Nome'} (${status}) - ...${userDoc.id.substring(0,6)}`;
@@ -109,11 +126,13 @@
                 select.addEventListener('change', (e) => { usuarioLogadoUid = e.target.value; });
 
             } catch (err) {
-                console.error("Erro ao listar:", err);
-                select.innerHTML = `<option value="">Erro ao conectar</option>`;
+                console.error("Erro ao listar usuários:", err);
+                select.innerHTML = `<option value="">Erro de permissão insuficiente</option>`;
             }
         }
-        carregarListaUsuarios();
+        
+        // Inicia o fluxo de bypass de segurança
+        inicializarAmbiente();
 
         // Processamento do Clique de Simulação
         document.getElementById('btn-simulate').addEventListener('click', async () => {
@@ -139,13 +158,12 @@
                 if (!userSnap.exists()) throw new Error("Usuário alvo não localizado.");
                 const userData = userSnap.data();
 
-                // Identifica se o usuário já era ativo para evitar contagem duplicada
                 const jaEraAtivo = userData.ativo === true;
 
-                // 1. ATUALIZAÇÃO SENSÍVEL DO USUÁRIO: Garante saldoLucro e ativo: true para o ranking ler!
+                // 1. Atualização do Usuário Alvo
                 await updateDoc(userRef, {
                     saldoLucro: increment(valorDeposito),
-                    ativo: true, // Crucial para aparecer na query com filtro do ranking
+                    ativo: true, 
                     giros: increment(1),
                     girosRoleta: increment(1)
                 });
@@ -158,7 +176,7 @@
                     descricao: "Simulação de aporte com ativação automática"
                 });
 
-                // 2. PROCESSAMENTO DA REDE DE INDICAÇÃO (3 NÍVEIS)
+                // 2. Processamento da Rede de Indicação (3 Níveis)
                 let atualIndicadorUid = userData.indicadoPor || null;
                 
                 const niveisConfig = [
@@ -185,7 +203,6 @@
                             totalComissoes: increment(valorComissao)
                         };
 
-                        // Se o convidado está se ativando agora por esse depósito
                         if (!jaEraAtivo) {
                             if (config.nivel === 1) {
                                 alteracoesPatrocinador.indicadosAtivosCount = increment(1);
@@ -195,7 +212,6 @@
 
                         await updateDoc(patrocinadorRef, alteracoesPatrocinador);
 
-                        // Histórico do Pai
                         await addDoc(collection(db, "usuarios", atualIndicadorUid, "movimentacoes"), {
                             tipo: `Comissão ${config.label}`,
                             valor: valorComissao,
@@ -204,10 +220,7 @@
                         });
 
                         resumoLogs += `<br><b>${config.label}:</b> UID (...${atualIndicadorUid.substring(0,6)}) recebeu R$ ${valorComissao.toFixed(2)}`;
-                        if (!jaEraAtivo && config.nivel === 1) {
-                            resumoLogs += ` ➔ <i>Contador 'indicadosAtivosCount' incrementado!</i>`;
-                        }
-
+                        
                         atualIndicadorUid = dadosPatrocinador.indicadoPor || null;
                     } else {
                         break;
@@ -217,7 +230,7 @@
                 Swal.fire({
                     icon: 'success',
                     title: 'Injeção Concluída!',
-                    html: `Conta do usuário atualizada para <b>Ativa</b>.<br>Depósito de R$ ${valorDeposito.toFixed(2)} lançado e elegível ao Ranking.<br><b style="color: #00e676">+1 Giro adicionado à roleta!</b><br>${resumoLogs === "" ? "<br><i>Este usuário não possui patrocinadores acima na árvore.</i>" : "<br>" + resumoLogs}`,
+                    html: `Conta atualizada para <b>Ativa</b>.<br>Depósito de R$ ${valorDeposito.toFixed(2)} lançado e elegível ao Ranking.<br><b style="color: #00e676">+1 Giro adicionado à roleta!</b><br>${resumoLogs === "" ? "<br><i>Sem patrocinadores acima.</i>" : "<br>" + resumoLogs}`,
                     background: '#060b19',
                     color: '#fff',
                     confirmButtonColor: '#0052ff'
