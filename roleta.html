@@ -366,15 +366,11 @@
 
                 // Definindo pesos probabilísticos para os prêmios (Menores valores têm mais chances)
                 // Índices: 0=R$50, 1=R$100, 2=Nada, 3=R$1, 4=R$5, 5=R$10, 6=R$20, 7=R$30
-                const poolProbabilidades = [
-                    2, 2, 2, 2,          // "Nada" (Alta chance)
+const poolProbabilidades = [
+                    2, 2, 2, 2, 2, 2,    // "Nada" (Maior chance)
                     3, 3, 3, 3, 3,       // "R$ 1" (Alta chance)
-                    4, 4, 4,             // "R$ 5" (Média/Alta)
-                    5, 5,                // "R$ 10" (Média)
-                    6, 6,                // "R$ 20" (Média)
-                    7,                   // "R$ 30" (Baixa)
-                    0,                   // "R$ 50" (Raro)
-                    1                    // "R$ 100" (Muito Raro)
+                    4, 4, 4,             // "R$ 5" (Média)
+                    5, 5                 // "R$ 10" (Baixa)
                 ];
 
                 const indiceSorteado = poolProbabilidades[Math.floor(Math.random() * poolProbabilidades.length)];
