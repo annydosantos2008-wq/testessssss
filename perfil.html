@@ -602,7 +602,7 @@
         </div>
 
         <div class="tab-content" id="content-ranking">
-            <p style="font-size:0.75rem; color: var(--text-muted); margin-bottom:15px; padding-left:5px;">Top 10 investidores com maior faturamento da rede:</p>
+            <p style="font-size:0.75rem; color: var(--text-muted); margin-bottom:15px; padding-left:5px;">Top 10 investidores ativos com maior faturamento da rede:</p>
             <div class="ranking-list-box" id="ranking-list-container">
             </div>
         </div>
@@ -618,7 +618,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, updateDoc, collection, query, orderBy, limit, getDocs, arrayUnion, increment, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs, arrayUnion, increment, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDKDFw7khZzM9hIX7xbbrbFQeESiCLnmOw",
@@ -706,7 +706,7 @@
         rodarFeedFOMO();
 
 
-        // --- ENGINE DO PLANO DE CARREIRA LATERAL ---
+        // --- CORREÇÃO DA ENGINE DO PLANO DE CARREIRA (SINCRONIZAÇÃO DAS METAS) ---
         function atualizarPatenteCarreira(indicados) {
             const avatar = document.getElementById('user-avatar');
             const badge = document.getElementById('rank-badge');
@@ -852,7 +852,6 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
             return valorPremio;
         });
 
-        // Atualizando as variáveis locais para refletir na tela imediatamente
         saldoLucro += premioSorteado;
         saldoGlobal = saldoPrincipal + saldoLucro;
 
@@ -877,7 +876,7 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
         btnRedeem.innerText = "Validar";
     }
 });
-        // --- RENDERIZADOR DINÂMICO DO SISTEMA DE METAS & RANKING ---
+        // --- RENDERIZADOR DINÂMICO DO SISTEMA DE METAS & RANKING (CORRIGIDO) ---
         async function carregarDadosMetasERanking() {
             const containerMetas = document.getElementById('metas-list-container');
             containerMetas.innerHTML = "";
@@ -926,7 +925,8 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
             
             try {
                 const usuariosRef = collection(db, "usuarios");
-                const q = query(usuariosRef, orderBy("saldoLucro", "desc"), limit(10));
+                // CORREÇÃO: Filtrando com "where('ativo', '==', true)" para que contas inativas sumam do ranking
+                const q = query(usuariosRef, where("ativo", "==", true), orderBy("saldoLucro", "desc"), limit(10));
                 const querySnapshot = await getDocs(q);
                 
                 containerRanking.innerHTML = "";
@@ -947,17 +947,19 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
                     containerRanking.appendChild(linhaRank);
                     posicao++;
                 });
+
+                if(posicao === 1) {
+                    containerRanking.innerHTML = `<p style="text-align:center; padding:20px; font-size:0.8rem; color:var(--text-muted);">Nenhum investidor ativo localizado.</p>`;
+                }
             } catch(e) {
                 console.error("Erro ao computar ranking do firestore: ", e);
-                containerRanking.innerHTML = `<p style="text-align:center; padding:20px; font-size:0.8rem; color:var(--red-danger);">Erro ao carregar o ranking.</p>`;
+                containerRanking.innerHTML = `<p style="text-align:center; padding:20px; font-size:0.8rem; color:var(--red-danger);">Erro ao carregar o ranking. Verifique os índices do Firestore.</p>`;
             }
         }
 
         async function processarResgatePremioMeta(idMeta, valorPremio) {
             try {
                 const userRef = doc(db, "usuarios", currentUserUid);
-                
-                // Salva o lucro separado no banco, garantindo que "saldo" e "saldoLucro" andem sem se sobrescrever
                 const novoSaldoLucro = saldoLucro + valorPremio;
 
                 await updateDoc(userRef, {
@@ -974,7 +976,6 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
                     confirmButtonColor: '#e5c158'
                 });
 
-                // Atualizando as variáveis locais para refletir na tela imediatamente
                 saldoLucro = novoSaldoLucro;
                 saldoGlobal = saldoPrincipal + saldoLucro;
                 metasResgatadas.push(idMeta);
@@ -1102,8 +1103,7 @@ document.getElementById('btn-redeem-promo').addEventListener('click', async () =
                         saldoLucro = d.saldoLucro !== undefined ? Number(d.saldoLucro) : 0;
                         saldoGlobal = saldoPrincipal + saldoLucro;
                         
-                        // CORREÇÃO AQUI: Lendo ESTRITAMENTE a variável de convidados ativos.
-                        // Se for undefined (usuário novo sem ninguém ativo), ele define como 0 sem puxar contagens vazias.
+                        // Garante leitura limpa de indicados estritamente ativos
                         totalIndicadosGlobal = d.indicadosAtivosCount !== undefined ? Number(d.indicadosAtivosCount) : 0; 
                         
                         metasResgatadas = d.metasResgatadas || [];
