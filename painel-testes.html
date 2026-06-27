@@ -26,70 +26,49 @@
             border-radius: 24px;
             max-width: 450px;
             width: 100%;
-            backdrop-filter: blur(12px);
-            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
         }
-        h2 { text-align: center; margin-bottom: 25px; font-weight: 800; letter-spacing: -0.5px; color: #ffd700; }
-        .form-group { margin-bottom: 18px; }
-        label { display: block; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; margin-bottom: 6px; font-weight: 600; }
-        select, input {
-            width: 100%;
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 12px 16px;
-            border-radius: 12px;
-            color: white;
-            font-size: 0.95rem;
-            transition: 0.2s;
+        h2 { font-size: 1.5rem; margin-bottom: 10px; font-weight: 800; color: #ffd700; }
+        p { font-size: 0.85rem; color: #94a3b8; margin-bottom: 25px; }
+        .form-group { text-align: left; margin-bottom: 20px; }
+        label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: #cbd5e1; font-weight: 600; display: block; margin-bottom: 8px; }
+        input, select {
+            width: 100%; padding: 14px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px; color: white; font-weight: 600; font-size: 0.9rem;
         }
-        select:focus, input:focus { border-color: #0052ff; background: rgba(15, 23, 42, 0.9); }
-        .btn-action {
-            width: 100%;
-            background: #0052ff;
-            color: white;
-            border: none;
-            padding: 14px;
-            border-radius: 12px;
-            font-weight: 600;
-            font-size: 0.95rem;
-            cursor: pointer;
-            margin-top: 10px;
-            box-shadow: 0 4px 15px rgba(0, 82, 255, 0.3);
-            transition: 0.2s;
+        button {
+            width: 100%; padding: 15px; background: linear-gradient(135deg, #0052ff 0%, #003db3 100%);
+            border: none; border-radius: 12px; color: white; font-weight: 800; cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 82, 255, 0.3); transition: 0.2s; font-size: 0.95rem; margin-top: 10px;
         }
-        .btn-action:hover { background: #1e6eff; }
-        .btn-action:active { transform: scale(0.98); }
-        .footer-note { text-align: center; margin-top: 20px; font-size: 0.75rem; color: #64748b; }
+        button:active { transform: scale(0.97); }
     </style>
 </head>
 <body>
 
     <div class="test-container">
-        <h2>Simulador de Fluxos 🧪</h2>
-        
+        <h2>Simulador de Ativação & Ranking 🧪</h2>
+        <p>Injete depósitos para validar usuários ativos, atualizar comissões e testar a atualização do Ranking Global.</p>
+
         <div class="form-group">
-            <label for="select-user">Selecionar Usuário Alvo</label>
-            <select id="select-user">
-                <option value="">Autenticando no Firebase...</option>
+            <label>Selecione o Usuário para Depositar</label>
+            <select id="select-users">
+                <option value="">Carregando usuários da base...</option>
             </select>
         </div>
 
         <div class="form-group">
-            <label for="input-deposit">Valor do Depósito Simulado (R$)</label>
-            <input type="number" id="input-deposit" value="50.00" min="1" step="0.01">
+            <label>Valor do Depósito Comercial (R$)</label>
+            <input type="number" id="test-amount" value="50.00" placeholder="Ex: 50.00">
         </div>
 
-        <button class="btn-action" id="btn-trigger-flow">Executar Fluxo Completo</button>
-        
-        <div class="footer-note">
-            Este painel injeta depósitos, adiciona giros na roleta e calcula comissões de rede (Níveis 1, 2 e 3).
-        </div>
+        <button id="btn-simulate">Processar Depósito e Ativar no Ranking</button>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getFirestore, collection, getDocs, doc, getDoc, updateDoc, addDoc, Timestamp, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, doc, getDoc, updateDoc, addDoc, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDKDFw7khZzM9hIX7xbbrbFQeESiCLnmOw",
@@ -101,154 +80,144 @@
         };
 
         const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // Inicialização com Autenticação Automática de um usuário válido da sua base para obter a permissão necessária
-        async function inicializarPainel() {
-            const select = document.getElementById("select-user");
-            try {
-                // Autentica dinamicamente com uma conta padrão para passar pelas regras de segurança
-                await signInWithEmailAndPassword(auth, "gugah6688@gmail.com", "123456");
-                carregarListaUsuarios();
-            } catch (authError) {
-                console.warn("Autenticação direta falhou, tentando ler sem login...", authError);
-                carregarListaUsuarios();
-            }
-        }
+        let usuarioLogadoUid = "";
 
-        // Carrega os usuários mapeando os dados do Firestore
+        // Carrega os usuários direto do Firestore
         async function carregarListaUsuarios() {
-            const select = document.getElementById("select-user");
-            
+            const select = document.getElementById('select-users');
             try {
-                const querySnapshot = await getDocs(collection(db, "usuarios"));
-                select.innerHTML = '<option value="">Selecione um usuário...</option>';
+                const snap = await getDocs(collection(db, "usuarios"));
+                select.innerHTML = "";
                 
-                if (querySnapshot.empty) {
-                    select.innerHTML = '<option value="">Nenhum usuário encontrado</option>';
+                if(snap.empty) {
+                    select.innerHTML = `<option value="">Nenhum usuário encontrado</option>`;
                     return;
                 }
 
-                querySnapshot.forEach((docSnap) => {
-                    const user = docSnap.data();
-                    const statusIcon = user.status === "ativo" ? "🟢" : "🔴";
-                    const option = document.createElement("option");
-                    option.value = docSnap.id;
-                    option.textContent = `${statusIcon} ${user.nome || 'Sem Nome'} (...${docSnap.id.substring(0,6)})`;
+                snap.forEach(userDoc => {
+                    const d = userDoc.data();
+                    const status = d.ativo ? "🟢 Ativo (Aparece no Rank)" : "🔴 Inativo (Oculto)";
+                    const option = document.createElement('option');
+                    option.value = userDoc.id;
+                    option.innerText = `${d.nome || 'Sem Nome'} (${status}) - ...${userDoc.id.substring(0,6)}`;
                     select.appendChild(option);
                 });
-            } catch (error) {
-                console.error("Erro detalhado do Firebase:", error);
-                select.innerHTML = '<option value="">Erro: Ajuste as regras do Firestore para modo teste</option>';
                 
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Permissão Negada',
-                    html: 'Seu Firebase bloqueou a leitura.<br><br>Para resolver temporariamente, vá no painel do Firebase ➔ <b>Firestore Database</b> ➔ aba <b>Rules</b> (Regras) e mude para:<br><br><pre style="text-align:left; background:#111; padding:10px; border-radius:5px; font-size:11px;">allow read, write: if true;</pre>',
-                    background: '#060b19',
-                    color: '#fff',
-                    confirmButtonColor: '#0052ff'
-                });
+                usuarioLogadoUid = select.value;
+                select.addEventListener('change', (e) => { usuarioLogadoUid = e.target.value; });
+
+            } catch (err) {
+                console.error("Erro ao listar:", err);
+                select.innerHTML = `<option value="">Erro ao conectar</option>`;
             }
         }
-        
-        inicializarPainel();
+        carregarListaUsuarios();
 
-        // Listener do botão de simulação de fluxos
-        document.getElementById("btn-trigger-flow").addEventListener("click", async () => {
-            const uid = document.getElementById("select-user").value;
-            const valorDeposito = parseFloat(document.getElementById("input-deposit").value);
-
-            if (!uid) return Swal.fire("Atenção", "Por favor, escolha um usuário da lista para testar.", "warning");
-            if (isNaN(valorDeposito) || valorDeposito <= 0) return Swal.fire("Atenção", "Insira um valor válido de depósito.", "warning");
+        // Processamento do Clique de Simulação
+        document.getElementById('btn-simulate').addEventListener('click', async () => {
+            const valorDeposito = parseFloat(document.getElementById('test-amount').value);
+            if (!usuarioLogadoUid) {
+                return Swal.fire("Atenção", "Selecione um usuário válido da lista.", "warning");
+            }
+            if (isNaN(valorDeposito) || valorDeposito <= 0) {
+                return Swal.fire("Erro", "Insira um valor de depósito válido", "error");
+            }
 
             Swal.fire({
-                title: 'Processando fluxo...',
-                text: 'Aguarde a injeção e o cálculo das indicações.',
+                title: 'Injetando no Banco...',
+                text: 'Atualizando saldos, definindo flag ativo:true e rodando comissões da árvore...',
                 allowOutsideClick: false,
                 didOpen: () => { Swal.showLoading(); }
             });
 
             try {
-                const userRef = doc(db, "usuarios", uid);
+                const userRef = doc(db, "usuarios", usuarioLogadoUid);
                 const userSnap = await getDoc(userRef);
-                if (!userSnap.exists()) throw new Error("Usuário não localizado no sistema.");
-
+                
+                if (!userSnap.exists()) throw new Error("Usuário alvo não localizado.");
                 const userData = userSnap.data();
-                const jaEraAtivo = userData.status === "ativo";
 
-                // 1. Atualiza saldos da conta e injeta +1 GIRO DE ROLETA no usuário ativo conforme mapeamento da imagem
+                // Identifica se o usuário já era ativo para evitar contagem duplicada
+                const jaEraAtivo = userData.ativo === true;
+
+                // 1. ATUALIZAÇÃO SENSÍVEL DO USUÁRIO: Garante saldoLucro e ativo: true para o ranking ler!
                 await updateDoc(userRef, {
-                    saldo: increment(valorDeposito), // Campo 'saldo' visto na sua imagem do firebase
-                    totalGanhos: increment(valorDeposito),
-                    status: "ativo",
-                    girosRoleta: increment(1) 
+                    saldoLucro: increment(valorDeposito),
+                    ativo: true, // Crucial para aparecer na query com filtro do ranking
+                    giros: increment(1),
+                    girosRoleta: increment(1)
                 });
 
-                // Registra o log na subcoleção interna do usuário para testes locais
-                await addDoc(collection(db, "usuarios", uid, "movimentacoes"), {
-                    tipo: "Depósito Comercial (Simulado)",
+                // Registra movimentação de histórico
+                await addDoc(collection(db, "usuarios", usuarioLogadoUid, "movimentacoes"), {
+                    tipo: "Depósito Aprovado",
                     valor: valorDeposito,
                     data: new Date().getTime(),
-                    descricao: "Injeção de saldo com concessão de +1 giro da roleta."
+                    descricao: "Simulação de aporte com ativação automática"
                 });
 
-                // 2. Configurações exatas das suas comissões de rede (20%, 5% e 1%)
-                const configuracaoNiveis = [
-                    { nivel: 1, porcentagem: 0.20, label: "Nível 1 (Direto)" },
-                    { nivel: 2, porcentagem: 0.05, label: "Nível 2" },
-                    { nivel: 3, porcentagem: 0.01, label: "Nível 3" }
+                // 2. PROCESSAMENTO DA REDE DE INDICAÇÃO (3 NÍVEIS)
+                let atualIndicadorUid = userData.indicadoPor || null;
+                
+                const niveisConfig = [
+                    { nivel: 1, porc: 0.20, label: "1ª Geração" },
+                    { nivel: 2, porc: 0.05, label: "2ª Geração" },
+                    { nivel: 3, porc: 0.01, label: "3ª Geração" }
                 ];
 
                 let resumoLogs = "";
-                let atualIndicadorUid = userData.indicadoPor || null;
 
-                // 3. Varre a árvore de uplinks (indicações para cima)
-                for (const config of configuracaoNiveis) {
-                    if (!atualIndicadorUid || atualIndicadorUid.trim() === "" || atualIndicadorUid === "null") break;
+                for (let i = 0; i < niveisConfig.length; i++) {
+                    if (!atualIndicadorUid || atualIndicadorUid.trim() === "") break;
 
+                    const config = niveisConfig[i];
                     const patrocinadorRef = doc(db, "usuarios", atualIndicadorUid);
                     const patrocinadorSnap = await getDoc(patrocinadorRef);
 
-                    if (!patrocinadorSnap.exists()) break;
+                    if (patrocinadorSnap.exists()) {
+                        const dadosPatrocinador = patrocinadorSnap.data();
+                        const valorComissao = valorDeposito * config.porc;
 
-                    const valorComissao = valorDeposito * config.porcentagem;
-                    const dadosPatrocinador = patrocinadorSnap.data();
+                        let alteracoesPatrocinador = {
+                            saldoLucro: increment(valorComissao),
+                            totalComissoes: increment(valorComissao)
+                        };
 
-                    const updateData = {
-                        saldo: increment(valorComissao),
-                        totalComissoes: increment(valorComissao)
-                    };
+                        // Se o convidado está se ativando agora por esse depósito
+                        if (!jaEraAtivo) {
+                            if (config.nivel === 1) {
+                                alteracoesPatrocinador.indicadosAtivosCount = increment(1);
+                            }
+                            alteracoesPatrocinador.ativosNaRede = increment(1);
+                        }
 
-                    // Se o convidado direto (Nível 1) acabou de se ativar, incrementa o contador oficial 'indicadosAtivosCount'
-                    if (!jaEraAtivo && config.nivel === 1) {
-                        updateData.indicadosAtivosCount = increment(1);
+                        await updateDoc(patrocinadorRef, alteracoesPatrocinador);
+
+                        // Histórico do Pai
+                        await addDoc(collection(db, "usuarios", atualIndicadorUid, "movimentacoes"), {
+                            tipo: `Comissão ${config.label}`,
+                            valor: valorComissao,
+                            data: new Date().getTime(),
+                            descricao: `Recebido do convidado ativo: ${userData.nome || "Usuário de Teste"}`
+                        });
+
+                        resumoLogs += `<br><b>${config.label}:</b> UID (...${atualIndicadorUid.substring(0,6)}) recebeu R$ ${valorComissao.toFixed(2)}`;
+                        if (!jaEraAtivo && config.nivel === 1) {
+                            resumoLogs += ` ➔ <i>Contador 'indicadosAtivosCount' incrementado!</i>`;
+                        }
+
+                        atualIndicadorUid = dadosPatrocinador.indicadoPor || null;
+                    } else {
+                        break;
                     }
-
-                    await updateDoc(patrocinadorRef, updateData);
-
-                    // Cria registro de movimentação para o extrato do padrinho
-                    await addDoc(collection(db, "usuarios", atualIndicadorUid, "movimentacoes"), {
-                        tipo: `Comissão ${config.label}`,
-                        valor: valorComissao,
-                        data: new Date().getTime(),
-                        descricao: `Recebido do convidado ativo: ${userData.nome || "Usuário de Teste"}`
-                    });
-
-                    resumoLogs += `<br><b>${config.label}:</b> UID (...${atualIndicadorUid.substring(0,6)}) ganhou R$ ${valorComissao.toFixed(2)}`;
-                    if (!jaEraAtivo && config.nivel === 1) {
-                        resumoLogs += ` ➔ <i>Contador 'indicadosAtivosCount' incrementado!</i>`;
-                    }
-
-                    // Sobe para o pai do pai
-                    atualIndicadorUid = dadosPatrocinador.indicadoPor || null;
                 }
 
                 Swal.fire({
                     icon: 'success',
-                    title: 'Fluxo Concluído!',
-                    html: `Conta do usuário atualizada para Ativa.<br>Depósito de R$ ${valorDeposito.toFixed(2)} injetado.<br><b style="color: #00e676">+1 Giro adicionado à roleta!</b><br>${resumoLogs === "" ? "<br><i>Este usuário não foi indicado por ninguém (sem árvore de rede).</i>" : "<br>" + resumoLogs}`,
+                    title: 'Injeção Concluída!',
+                    html: `Conta do usuário atualizada para <b>Ativa</b>.<br>Depósito de R$ ${valorDeposito.toFixed(2)} lançado e elegível ao Ranking.<br><b style="color: #00e676">+1 Giro adicionado à roleta!</b><br>${resumoLogs === "" ? "<br><i>Este usuário não possui patrocinadores acima na árvore.</i>" : "<br>" + resumoLogs}`,
                     background: '#060b19',
                     color: '#fff',
                     confirmButtonColor: '#0052ff'
