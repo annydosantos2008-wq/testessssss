@@ -86,19 +86,35 @@
 
         let usuarioLogadoUid = "";
 
-        // Autentica o painel como administrador primeiro para herdar as permissões necessárias de leitura
+      // Detecta automaticamente se você já está logado no sistema
         async function inicializarAmbiente() {
             const select = document.getElementById('select-users');
-            try {
-                // Autentica com a conta master configurada nas regras do seu Firestore
-                await signInWithEmailAndPassword(auth, "lipedosantos2008@gmail.com", "123456");
-                console.log("Autenticado como administrador no painel de testes com sucesso.");
-                carregarListaUsuarios();
-            } catch (authErr) {
-                console.error("Falha na autenticação administrativa do simulador:", authErr);
-                select.innerHTML = `<option value="">Erro na Autenticação Admin</option>`;
-                Swal.fire("Sessão Bloqueada", "Cadastre a senha correta do email administrador no código para liberar o simulador.", "error");
-            }
+            
+            auth.onAuthStateChanged(async (user) => {
+                if (user) {
+                    console.log("Sessão ativa detectada:", user.email);
+                    // Verifica se é o admin cadastrado nas suas regras
+                    if (user.email === "lipedosantos2008@gmail.com") {
+                        console.log("Permissões de administrador validadas.");
+                        carregarListaUsuarios();
+                    } else {
+                        console.warn("Usuário logado não é o administrador master.");
+                        // Tenta carregar mesmo assim caso as regras permitam
+                        carregarListaUsuarios();
+                    }
+                } else {
+                    console.error("Nenhum usuário logado detectado.");
+                    select.innerHTML = `<option value="">Por favor, faça login no app primeiro</option>`;
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Acesso Não Autenticado',
+                        text: 'Entre na sua conta de administrador na plataforma principal deste mesmo navegador antes de abrir o simulador.',
+                        background: '#060b19',
+                        color: '#fff',
+                        confirmButtonColor: '#0052ff'
+                    });
+                }
+            });
         }
 
         // Carrega os usuários direto do Firestore após estar logado
