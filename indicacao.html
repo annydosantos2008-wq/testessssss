@@ -416,7 +416,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, onSnapshot, collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDKDFw7khZzM9hIX7xbbrbFQeESiCLnmOw",
@@ -449,6 +449,20 @@
                 codeElement.classList.add('animate__animated', 'animate__fadeIn');
                 
                 try {
+                    // 1. Busca todos os investimentos ATIVOS do sistema para cruzar os dados de quem comprou relógio
+                    const invQuery = query(collection(db, "investimentos"), where("status", "==", "ativo"));
+                    const invSnapshot = await getDocs(invQuery);
+                    
+                    // Cria um Set contendo os UIDs únicos dos usuários que possuem investimento ativo
+                    const usersComInvestimentoAtivo = new Set();
+                    invSnapshot.forEach(docInv => {
+                        const invData = docInv.data();
+                        if (invData.userId) {
+                            usersComInvestimentoAtivo.add(invData.userId);
+                        }
+                    });
+
+                    // 2. Busca a lista de usuários da rede
                     const usuariosRef = collection(db, "usuarios");
                     const querySnapshot = await getDocs(usuariosRef);
                     
@@ -458,10 +472,10 @@
 
                     querySnapshot.forEach((docSnap) => {
                         const uData = docSnap.data();
+                        const idDoUsuario = docSnap.id;
                         
-                        // REGRA ATUALIZADA: Só é ativo se o totalDepositado existir e for maior que 0
-                        // Isso ignora contas novas que têm apenas o bónus inicial de 10$
-                        const usuarioDeFatoAtivo = uData.totalDepositado && uData.totalDepositado > 0;
+                        // NOVA REGRA DE ATIVO: O UID do usuário precisa estar no Set de investimentos ativos
+                        const usuarioDeFatoAtivo = usersComInvestimentoAtivo.has(idDoUsuario);
                         
                         if (uData.indicadoPor === user.uid) {
                             l1++;
@@ -541,7 +555,6 @@
             percentLabel.innerText = finalPercent + "%";
         }
 
-        // Configuração dos botões de copiar direta via addEventListener
         document.getElementById('btn-code').addEventListener('click', () => {
             const code = document.getElementById('referral-code').innerText;
             if(code.includes("Gerando")) return;
@@ -554,7 +567,7 @@
             executarCopia(link, 'btn-link', 'Link Copiado!');
         });
 
-        function executarCopia(texto, btnId, msgSucesso) {
+        function ejecutarCopia(texto, btnId, msgSucesso) {
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(texto).then(() => {
                     sucessoCopiaVisual(btnId, msgSucesso);
