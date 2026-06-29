@@ -350,7 +350,7 @@
                     saldoLucro: 0,      
                     totalGanhos: 0, 
                     totalComissoes: 0, 
-                    giros: 1, 
+                    girosRoleta: 1, // Corrigido para dar 1 giro inicial no campo correto usado pela roleta
                     indicadosCount: 0,   
                     indicadosL2Count: 0, 
                     indicadosL3Count: 0, 
@@ -361,7 +361,6 @@
                     status: "ativo", 
                     dataCriacao: new Date().toISOString() 
                 });
-
                 if (saldoInicial > 0) {
                     await addDoc(collection(db, "historico"), {
                         userId: user.uid,
