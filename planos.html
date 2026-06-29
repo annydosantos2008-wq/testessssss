@@ -493,7 +493,7 @@
         { nome: 'SPEED', valor: 350, dias: 30, diario: 70, total: 2100, ativo: true, tier: 'prime', img: 'https://images.unsplash.com/photo-1619134778706-7015533a6150?w=600&q=80' },
         { nome: 'OURO', valor: 450, dias: 30, diario: 90, total: 2700, ativo: true, tier: 'prime', img: 'https://images.unsplash.com/photo-1614164185128-e4ec99c436d7?w=600&q=80' },
         { nome: 'ADVANCED', valor: 500, dias: 30, diario: 100, total: 3000, ativo: true, tier: 'prime', img: 'https://images.unsplash.com/photo-1508685096489-7aacd43bd3b1?w=600&q=80' },
-        { nome: 'VITALITY', valor: 700, dias: 30, diario: 140, total: 4200, ativo: true, tier: 'prime', img: 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=600&q=80' }, // <- IMAGEM CORRIGIDA AQUI
+        { nome: 'VITALITY', valor: 700, dias: 30, diario: 140, total: 4200, ativo: true, tier: 'prime', img: 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=600&q=80' },
         { nome: 'PREMIUM', valor: 1000, dias: 30, diario: 200, total: 6000, ativo: true, tier: 'exclusive', img: 'https://images.unsplash.com/photo-1639006570490-79c0c53f1080?w=600&q=80' },
         { nome: 'VIP', valor: 2000, dias: 30, diario: 400, total: 12000, ativo: true, tier: 'exclusive', img: 'https://images.unsplash.com/photo-1629581678313-36cf745a9af9?w=600&q=80' },
         { nome: 'ELITE', valor: 3000, dias: 30, diario: 0, total: 0, ativo: false, tier: 'exclusive', img: 'https://images.unsplash.com/photo-1622434641406-a158123450f9?w=600&q=80' },
@@ -650,13 +650,6 @@
         }).join('');
     }
 
-    window.switchTierTab = function(tier) {
-        activeTier = tier;
-        document.querySelectorAll('.tier-tab-btn').forEach(btn => btn.classList.remove('active'));
-        document.getElementById(`tab-${tier}`).classList.add('active');
-        gerarPlanos();
-    }
-
     async function processarComissoesRede(valorPlano) {
         try {
             const compradorSnap = await getDoc(doc(db, "usuarios", uidUsuario));
@@ -664,6 +657,27 @@
             
             const dados = compradorSnap.data();
             if (dados.jaGerouBonus === true) return;
+
+            // --- NOVA REGRA: BONIFICAÇÃO EM GIRO PARA O PADRINHO (NÍVEL 1) ---
+            if (dados.indicadoPor && dados.indicadoPor.trim() !== "") {
+                try {
+                    const padrinhoRef = doc(db, "usuarios", dados.indicadoPor);
+                    await updateDoc(padrinhoRef, {
+                        girosRoleta: increment(1)
+                    });
+                    
+                    await addDoc(collection(db, "historico"), {
+                        userId: dados.indicadoPor,
+                        valor: 0,
+                        tipo: "Bônus de Indicação",
+                        descricao: `Recebeu 1 Giro de Roleta - Compra efetuada por ${dados.nome || 'Convidado L1'}`,
+                        data: Timestamp.now()
+                    });
+                } catch (errGiro) {
+                    console.error("Erro ao creditar giro ao padrinho:", errGiro);
+                }
+            }
+            // -----------------------------------------------------------------
 
             const rede = [
                 { id: dados.indicadoPor, pct: 0.10 },      
